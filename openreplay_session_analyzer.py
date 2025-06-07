@@ -1,10 +1,9 @@
 """
 OpenReplay Session Analysis MCP Server
-Django-based MCP server for analyzing OpenReplay session data
+Django-based MCP server for analyzing OpenReplay session data using MCPToolset
 """
 
 import os
-import json
 import asyncio
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
@@ -12,27 +11,30 @@ from dataclasses import dataclass
 
 import httpx
 from django.conf import settings
-from django.core.management.base import BaseCommand
-from django_mcp_server import MCPServer
-from mcp.types import (
-    Tool, 
-    TextContent, 
-    Resource, 
-    Prompt,
-    PromptMessage,
-    GetPromptResult
-)
 
-# Django settings configuration
+# Configure Django settings if not already configured
 if not settings.configured:
     settings.configure(
         DEBUG=True,
         SECRET_KEY='openreplay-mcp-server-key',
         INSTALLED_APPS=[
-            'django_mcp_server',
+            'mcp_server',
         ],
         USE_TZ=True,
+        ROOT_URLCONF='openreplay_mcp.urls',
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        }
     )
+
+import django
+django.setup()
+
+from mcp_server import MCPToolset
+
 
 @dataclass
 class OpenReplayConfig:
@@ -40,6 +42,7 @@ class OpenReplayConfig:
     api_url: str = os.getenv('OPENREPLAY_API_URL', 'https://api.openreplay.com')
     api_key: str = os.getenv('OPENREPLAY_API_KEY', '')
     project_id: str = os.getenv('OPENREPLAY_PROJECT_ID', '')
+
 
 class OpenReplayClient:
     """Client for OpenReplay API interactions"""
@@ -106,20 +109,13 @@ class OpenReplayClient:
         response.raise_for_status()
         return response.json()
     
-    async def get_session_errors(self, session_id: str) -> Dict:
-        """Get errors for a specific session"""
-        response = await self.client.get(
-            f"{self.config.api_url}/v1/sessions/{session_id}/errors"
-        )
-        response.raise_for_status()
-        return response.json()
-    
     async def get_user_sessions(self, user_id: str, limit: int = 20) -> Dict:
         """Get all sessions for a specific user"""
         return await self.search_sessions(
             limit=limit,
             user_id=user_id
         )
+
 
 class SessionAnalyzer:
     """Analyzer for session data and user behavior patterns"""
@@ -237,113 +233,52 @@ class SessionAnalyzer:
         
         return "\n".join(insights) if insights else "✅ Session appears normal with no major issues detected"
 
-# Initialize OpenReplay client
-config = OpenReplayConfig()
-openreplay_client = OpenReplayClient(config)
-analyzer = SessionAnalyzer()
 
-# Create MCP Server
-server = MCPServer("openreplay-session-analysis")
-
-@server.list_tools()
-async def list_tools() -> List[Tool]:
-    """List all available tools for session analysis"""
-    return [
-        Tool(
-            name="search_sessions",
-            description="Search for OpenReplay sessions with various filters",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "limit": {"type": "integer", "default": 50, "description": "Number of sessions to return"},
-                    "start_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
-                    "end_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
-                    "user_id": {"type": "string", "description": "Filter by specific user ID"},
-                    "has_errors": {"type": "boolean", "description": "Filter sessions with/without errors"},
-                    "min_duration": {"type": "integer", "description": "Minimum session duration in seconds"}
-                }
-            }
-        ),
-        Tool(
-            name="get_session_details",
-            description="Get detailed information about a specific session",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "session_id": {"type": "string", "description": "Session ID to analyze"}
-                },
-                "required": ["session_id"]
-            }
-        ),
-        Tool(
-            name="analyze_user_journey",
-            description="Analyze user journey and navigation patterns for a session",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "session_id": {"type": "string", "description": "Session ID to analyze"}
-                },
-                "required": ["session_id"]
-            }
-        ),
-        Tool(
-            name="detect_problem_patterns",
-            description="Detect rage clicks, dead clicks, form abandonment and other issues",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "session_id": {"type": "string", "description": "Session ID to analyze"}
-                },
-                "required": ["session_id"]
-            }
-        ),
-        Tool(
-            name="generate_session_summary",
-            description="Generate AI-powered summary and insights for a session",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "session_id": {"type": "string", "description": "Session ID to summarize"}
-                },
-                "required": ["session_id"]
-            }
-        ),
-        Tool(
-            name="find_similar_sessions",
-            description="Find sessions with similar patterns or issues",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "reference_session_id": {"type": "string", "description": "Reference session to find similar ones"},
-                    "similarity_criteria": {"type": "string", "enum": ["errors", "journey", "duration", "user_behavior"], "default": "errors"}
-                },
-                "required": ["reference_session_id"]
-            }
-        ),
-        Tool(
-            name="get_user_session_history",
-            description="Get all sessions for a specific user to analyze behavior patterns",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "user_id": {"type": "string", "description": "User ID to analyze"},
-                    "limit": {"type": "integer", "default": 20, "description": "Number of sessions to return"}
-                },
-                "required": ["user_id"]
-            }
-        )
-    ]
-
-@server.call_tool()
-async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
-    """Handle tool calls for session analysis"""
+class OpenReplaySessionAnalysisTools(MCPToolset):
+    """OpenReplay Session Analysis MCP Tools using MCPToolset"""
     
-    try:
-        if name == "search_sessions":
-            result = await openreplay_client.search_sessions(**arguments)
-            sessions = result.get('sessions', [])
+    def __init__(self):
+        super().__init__()
+        self.config = OpenReplayConfig()
+        self.client = OpenReplayClient(self.config)
+        self.analyzer = SessionAnalyzer()
+    
+    async def search_sessions(
+        self,
+        limit: int = 50,
+        start_date: str = None,
+        end_date: str = None,
+        user_id: str = None,
+        has_errors: bool = None,
+        min_duration: int = None
+    ) -> str:
+        """
+        Search for OpenReplay sessions with various filters.
+        
+        Args:
+            limit: Number of sessions to return (default: 50)
+            start_date: Start date in YYYY-MM-DD format
+            end_date: End date in YYYY-MM-DD format
+            user_id: Filter by specific user ID
+            has_errors: Filter sessions with/without errors
+            min_duration: Minimum session duration in seconds
+        
+        Returns:
+            Formatted string with session search results
+        """
+        try:
+            result = await self.client.search_sessions(
+                limit=limit,
+                start_date=start_date,
+                end_date=end_date,
+                user_id=user_id,
+                has_errors=has_errors,
+                min_duration=min_duration
+            )
             
+            sessions = result.get('sessions', [])
             summary = f"Found {len(sessions)} sessions matching criteria:\n\n"
+            
             for session in sessions[:10]:  # Show first 10
                 summary += f"• Session {session.get('id')}: {session.get('duration', 0)/1000:.1f}s"
                 if session.get('user_id'):
@@ -352,11 +287,23 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     summary += f" ⚠️ {session.get('errors_count')} errors"
                 summary += f" - {session.get('created_at', 'Unknown date')}\n"
             
-            return [TextContent(type="text", text=summary)]
+            return summary
+            
+        except Exception as e:
+            return f"Error searching sessions: {str(e)}"
+    
+    async def get_session_details(self, session_id: str) -> str:
+        """
+        Get detailed information about a specific session.
         
-        elif name == "get_session_details":
-            session_id = arguments["session_id"]
-            session_data = await openreplay_client.get_session_details(session_id)
+        Args:
+            session_id: The ID of the session to analyze
+        
+        Returns:
+            Formatted string with detailed session information
+        """
+        try:
+            session_data = await self.client.get_session_details(session_id)
             
             details = f"Session Details for {session_id}:\n"
             details += f"Duration: {session_data.get('duration', 0)/1000:.1f} seconds\n"
@@ -371,16 +318,28 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             if session_data.get('replay_url'):
                 details += f"\n🎥 Replay URL: {session_data['replay_url']}"
             
-            return [TextContent(type="text", text=details)]
+            return details
+            
+        except Exception as e:
+            return f"Error getting session details: {str(e)}"
+    
+    async def analyze_user_journey(self, session_id: str) -> str:
+        """
+        Analyze user journey and navigation patterns for a session.
         
-        elif name == "analyze_user_journey":
-            session_id = arguments["session_id"]
-            session_data = await openreplay_client.get_session_details(session_id)
-            events_data = await openreplay_client.get_session_events(session_id)
+        Args:
+            session_id: The ID of the session to analyze
+        
+        Returns:
+            Formatted string with user journey analysis
+        """
+        try:
+            session_data = await self.client.get_session_details(session_id)
+            events_data = await self.client.get_session_events(session_id)
             
             # Combine session and events data
             full_session_data = {**session_data, 'events': events_data.get('events', [])}
-            journey = analyzer.analyze_user_journey(full_session_data)
+            journey = self.analyzer.analyze_user_journey(full_session_data)
             
             analysis = f"User Journey Analysis for Session {session_id}:\n\n"
             analysis += f"📊 Overview:\n"
@@ -394,15 +353,27 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 for i, page in enumerate(journey['page_flow'][:5]):  # Show first 5 pages
                     analysis += f"{i+1}. {page['url']} ({page['duration']/1000:.1f}s)\n"
             
-            return [TextContent(type="text", text=analysis)]
+            return analysis
+            
+        except Exception as e:
+            return f"Error analyzing user journey: {str(e)}"
+    
+    async def detect_problem_patterns(self, session_id: str) -> str:
+        """
+        Detect rage clicks, dead clicks, form abandonment and other issues.
         
-        elif name == "detect_problem_patterns":
-            session_id = arguments["session_id"]
-            session_data = await openreplay_client.get_session_details(session_id)
-            events_data = await openreplay_client.get_session_events(session_id)
+        Args:
+            session_id: The ID of the session to analyze
+        
+        Returns:
+            Formatted string with problem pattern analysis
+        """
+        try:
+            session_data = await self.client.get_session_details(session_id)
+            events_data = await self.client.get_session_events(session_id)
             
             full_session_data = {**session_data, 'events': events_data.get('events', [])}
-            problems = analyzer.detect_problem_patterns(full_session_data)
+            problems = self.analyzer.detect_problem_patterns(full_session_data)
             
             report = f"Problem Pattern Analysis for Session {session_id}:\n\n"
             
@@ -424,17 +395,29 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             if not any(problems.values()):
                 report += "✅ No significant problems detected in this session."
             
-            return [TextContent(type="text", text=report)]
+            return report
+            
+        except Exception as e:
+            return f"Error detecting problem patterns: {str(e)}"
+    
+    async def generate_session_summary(self, session_id: str) -> str:
+        """
+        Generate AI-powered summary and insights for a session.
         
-        elif name == "generate_session_summary":
-            session_id = arguments["session_id"]
-            session_data = await openreplay_client.get_session_details(session_id)
-            events_data = await openreplay_client.get_session_events(session_id)
+        Args:
+            session_id: The ID of the session to summarize
+        
+        Returns:
+            Formatted string with session summary and insights
+        """
+        try:
+            session_data = await self.client.get_session_details(session_id)
+            events_data = await self.client.get_session_events(session_id)
             
             full_session_data = {**session_data, 'events': events_data.get('events', [])}
-            journey = analyzer.analyze_user_journey(full_session_data)
-            problems = analyzer.detect_problem_patterns(full_session_data)
-            insights = analyzer.generate_session_insights(full_session_data, problems, journey)
+            journey = self.analyzer.analyze_user_journey(full_session_data)
+            problems = self.analyzer.detect_problem_patterns(full_session_data)
+            insights = self.analyzer.generate_session_insights(full_session_data, problems, journey)
             
             summary = f"Session Summary for {session_id}:\n\n"
             summary += f"📈 Key Metrics:\n"
@@ -448,41 +431,67 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             if session_data.get('replay_url'):
                 summary += f"🎥 Watch replay: {session_data['replay_url']}"
             
-            return [TextContent(type="text", text=summary)]
-        
-        elif name == "find_similar_sessions":
-            reference_id = arguments["reference_session_id"]
-            criteria = arguments.get("similarity_criteria", "errors")
+            return summary
             
+        except Exception as e:
+            return f"Error generating session summary: {str(e)}"
+    
+    async def find_similar_sessions(
+        self, 
+        reference_session_id: str, 
+        similarity_criteria: str = "errors"
+    ) -> str:
+        """
+        Find sessions with similar patterns or issues.
+        
+        Args:
+            reference_session_id: Reference session to find similar ones
+            similarity_criteria: Criteria for similarity (errors, journey, duration, user_behavior)
+        
+        Returns:
+            Formatted string with similar sessions
+        """
+        try:
             # Get reference session
-            ref_session = await openreplay_client.get_session_details(reference_id)
+            ref_session = await self.client.get_session_details(reference_session_id)
             
             # Search for similar sessions based on criteria
             search_params = {"limit": 20}
-            if criteria == "errors" and ref_session.get('errors_count', 0) > 0:
+            if similarity_criteria == "errors" and ref_session.get('errors_count', 0) > 0:
                 search_params["has_errors"] = True
-            elif criteria == "duration":
+            elif similarity_criteria == "duration":
                 duration = ref_session.get('duration', 0)
                 search_params["min_duration"] = max(0, duration // 1000 - 30)  # Within 30 seconds
             
-            similar_sessions = await openreplay_client.search_sessions(**search_params)
+            similar_sessions = await self.client.search_sessions(**search_params)
             sessions = similar_sessions.get('sessions', [])
             
-            result = f"Similar Sessions to {reference_id} (by {criteria}):\n\n"
+            result = f"Similar Sessions to {reference_session_id} (by {similarity_criteria}):\n\n"
             for session in sessions[:10]:
-                if session.get('id') != reference_id:  # Exclude reference session
+                if session.get('id') != reference_session_id:  # Exclude reference session
                     result += f"• {session.get('id')}: {session.get('duration', 0)/1000:.1f}s"
                     if session.get('errors_count', 0) > 0:
                         result += f" ({session['errors_count']} errors)"
                     result += f" - {session.get('created_at', 'Unknown')}\n"
             
-            return [TextContent(type="text", text=result)]
-        
-        elif name == "get_user_session_history":
-            user_id = arguments["user_id"]
-            limit = arguments.get("limit", 20)
+            return result
             
-            user_sessions = await openreplay_client.get_user_sessions(user_id, limit)
+        except Exception as e:
+            return f"Error finding similar sessions: {str(e)}"
+    
+    async def get_user_session_history(self, user_id: str, limit: int = 20) -> str:
+        """
+        Get all sessions for a specific user to analyze behavior patterns.
+        
+        Args:
+            user_id: The ID of the user to analyze
+            limit: Number of sessions to return (default: 20)
+        
+        Returns:
+            Formatted string with user session history
+        """
+        try:
+            user_sessions = await self.client.get_user_sessions(user_id, limit)
             sessions = user_sessions.get('sessions', [])
             
             history = f"Session History for User {user_id}:\n\n"
@@ -497,119 +506,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     history += f"   ⚠️ Errors: {session['errors_count']}\n"
                 history += "\n"
             
-            return [TextContent(type="text", text=history)]
-        
-        else:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+            return history
             
-    except Exception as e:
-        return [TextContent(type="text", text=f"Error executing {name}: {str(e)}")]
+        except Exception as e:
+            return f"Error getting user session history: {str(e)}"
 
-@server.list_prompts()
-async def list_prompts() -> List[Prompt]:
-    """List available analysis prompts"""
-    return [
-        Prompt(
-            name="debug_session",
-            description="Debug a problematic session and identify issues",
-            arguments=[
-                {"name": "session_id", "description": "Session ID to debug", "required": True}
-            ]
-        ),
-        Prompt(
-            name="analyze_user_behavior",
-            description="Analyze user behavior patterns across multiple sessions",
-            arguments=[
-                {"name": "user_id", "description": "User ID to analyze", "required": True}
-            ]
-        ),
-        Prompt(
-            name="ux_research_report",
-            description="Generate UX research insights from session data",
-            arguments=[
-                {"name": "date_range", "description": "Date range for analysis (e.g., 'last_week')", "required": False}
-            ]
-        )
-    ]
 
-@server.get_prompt()
-async def get_prompt(name: str, arguments: Dict[str, str]) -> GetPromptResult:
-    """Generate analysis prompts"""
-    
-    if name == "debug_session":
-        session_id = arguments["session_id"]
-        return GetPromptResult(
-            description=f"Debug session {session_id}",
-            messages=[
-                PromptMessage(
-                    role="user",
-                    content=TextContent(
-                        type="text",
-                        text=f"Please analyze session {session_id} for debugging purposes. "
-                             f"I need to understand what went wrong and identify any issues. "
-                             f"Use the session analysis tools to get details, detect problems, "
-                             f"and generate insights about this session."
-                    )
-                )
-            ]
-        )
-    
-    elif name == "analyze_user_behavior":
-        user_id = arguments["user_id"]
-        return GetPromptResult(
-            description=f"Analyze behavior for user {user_id}",
-            messages=[
-                PromptMessage(
-                    role="user", 
-                    content=TextContent(
-                        type="text",
-                        text=f"Please analyze the behavior patterns for user {user_id}. "
-                             f"Look at their session history, identify trends, and provide "
-                             f"insights about their user experience and any recurring issues."
-                    )
-                )
-            ]
-        )
-    
-    elif name == "ux_research_report":
-        date_range = arguments.get("date_range", "last_week")
-        return GetPromptResult(
-            description="Generate UX research report",
-            messages=[
-                PromptMessage(
-                    role="user",
-                    content=TextContent(
-                        type="text", 
-                        text=f"Generate a UX research report based on session data from {date_range}. "
-                             f"Search for recent sessions, identify common problems and patterns, "
-                             f"and provide actionable insights for improving user experience."
-                    )
-                )
-            ]
-        )
-    
-    return GetPromptResult(
-        description="Unknown prompt",
-        messages=[PromptMessage(role="user", content=TextContent(type="text", text="Unknown prompt"))]
-    )
-
-# Django management command to run the server
-class Command(BaseCommand):
-    help = 'Run OpenReplay Session Analysis MCP Server'
-
-    def handle(self, *args, **options):
-        """Run the MCP server"""
-        print("Starting OpenReplay Session Analysis MCP Server...")
-        print(f"API URL: {config.api_url}")
-        print(f"Project ID: {config.project_id}")
-        
-        # Run the server
-        asyncio.run(server.run())
-
-if __name__ == "__main__":
-    # For direct execution
-    import django
-    django.setup()
-    
-    command = Command()
-    command.handle()
+# Export the toolset for Django MCP Server
+openreplay_tools = OpenReplaySessionAnalysisTools()
