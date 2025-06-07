@@ -1,0 +1,4 @@
+django>=4.2.0
+django-mcp-server>=0.1.0
+httpx>=0.24.0
+mcp>=0.1.0

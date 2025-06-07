@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  openreplay-mcp:
+    build: .
+    environment:
+      - OPENREPLAY_API_URL=${OPENREPLAY_API_URL}
+      - OPENREPLAY_API_KEY=${OPENREPLAY_API_KEY}
+      - OPENREPLAY_PROJECT_ID=${OPENREPLAY_PROJECT_ID}
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: python run_server.py
