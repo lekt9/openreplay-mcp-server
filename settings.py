@@ -14,7 +14,7 @@ ALLOWED_HOSTS = ['*']
 INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.auth',
-    'django_mcp_server',
+    'django_mcp',
 ]
 
 MIDDLEWARE = [
