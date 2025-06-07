@@ -111,8 +111,7 @@ docker run -e OPENREPLAY_API_KEY=your_key -e OPENREPLAY_PROJECT_ID=your_project 
 ## 🔧 Development
 
 The server is built with:
-- **Django** - Web framework and project structure
-- **django-mcp-server** - MCP protocol implementation
+- **FastMCP** - Official Python MCP SDK for server implementation
 - **httpx** - Async HTTP client for OpenReplay API
 - **asyncio** - Async/await support
 
@@ -120,11 +119,10 @@ The server is built with:
 
 ```
 openreplay-mcp-server/
-├── openreplay_session_analyzer.py  # Main MCP server implementation
-├── run_server.py                   # Standalone server runner
-├── settings.py                     # Django settings
-├── urls.py                         # URL configuration
-├── manage.py                       # Django management
+├── openreplay_session_analyzer.py  # OpenReplay client and analysis logic
+├── run_server.py                   # FastMCP server with tools
+├── mcp.py                          # Django MCP configuration (optional)
+├── settings.py                     # Django settings (optional)
 ├── requirements.txt                # Python dependencies
 ├── .env.example                    # Environment variables template
 ├── Dockerfile                      # Container configuration
@@ -134,10 +132,9 @@ openreplay-mcp-server/
 
 ### Adding New Analysis Features
 
-1. Add new methods to the `SessionAnalyzer` class
-2. Create corresponding tools in the `list_tools()` function
-3. Handle the new tools in the `call_tool()` function
-4. Test with your OpenReplay data
+1. Add new methods to the `SessionAnalyzer` class in `openreplay_session_analyzer.py`
+2. Create corresponding `@mcp.tool()` decorated functions in `run_server.py`
+3. Test with your OpenReplay data
 
 ## 📊 Session Analysis Capabilities
 
@@ -164,24 +161,24 @@ openreplay-mcp-server/
 ### Debugging Workflow
 ```python
 # Search for recent error sessions
-sessions = search_sessions(has_errors=True, start_date="2024-06-01")
+sessions = await search_sessions(has_errors=True, start_date="2024-06-01")
 
 # Analyze specific problematic session
-summary = generate_session_summary(session_id="abc123")
-problems = detect_problem_patterns(session_id="abc123")
+summary = await generate_session_summary(session_id="abc123")
+problems = await detect_problem_patterns(session_id="abc123")
 
 # Find similar issues
-similar = find_similar_sessions(reference_session_id="abc123", criteria="errors")
+similar = await find_similar_sessions(reference_session_id="abc123", criteria="errors")
 ```
 
 ### UX Research Workflow
 ```python
 # Analyze user behavior over time
-user_history = get_user_session_history(user_id="user123")
+user_history = await get_user_session_history(user_id="user123")
 
 # Study navigation patterns
 for session in user_sessions:
-    journey = analyze_user_journey(session_id=session.id)
+    journey = await analyze_user_journey(session_id=session.id)
     # Analyze patterns...
 ```
 
@@ -210,8 +207,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - [OpenReplay](https://openreplay.com/) for providing the session replay platform
-- [Model Context Protocol](https://github.com/anthropics/mcp) for the integration framework
-- [Django MCP Server](https://github.com/django-mcp/django-mcp-server) for the Django integration
+- [Model Context Protocol](https://github.com/modelcontextprotocol/python-sdk) for the integration framework
+- [FastMCP](https://github.com/modelcontextprotocol/python-sdk) for the Python MCP SDK
 
 ## 📞 Support
 
