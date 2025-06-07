@@ -18,7 +18,7 @@ if not settings.configured:
         DEBUG=True,
         SECRET_KEY='openreplay-mcp-server-key',
         INSTALLED_APPS=[
-            'mcp_server',
+            'django_mcp',
         ],
         USE_TZ=True,
         ROOT_URLCONF='openreplay_mcp.urls',
@@ -33,7 +33,7 @@ if not settings.configured:
 import django
 django.setup()
 
-from mcp_server import MCPToolset
+from django_mcp import MCPToolset
 
 
 @dataclass
