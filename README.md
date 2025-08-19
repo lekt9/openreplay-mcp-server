@@ -1,223 +1,179 @@
-# OpenReplay Session Analysis MCP Server
+# OpenReplay MCP Server
 
-A Model Context Protocol (MCP) server for analyzing OpenReplay session recordings and user behavior patterns. This server enables AI assistants to analyze user sessions, detect problems, and provide actionable insights from OpenReplay data.
+A comprehensive Model Context Protocol (MCP) server for analyzing OpenReplay session data, monitoring live sessions, and generating actionable insights.
 
-## 🔥 Features
+## 🚀 Features
 
-- 🔍 **Session Search & Filtering** - Find sessions by date, user, errors, duration
-- 📊 **User Journey Analysis** - Track page flows and navigation patterns  
-- 🐛 **Problem Detection** - Identify rage clicks, form abandonment, errors
-- 🤖 **AI-Powered Insights** - Generate intelligent session summaries
-- 👥 **User Behavior Analysis** - Analyze patterns across multiple sessions
-- 🔗 **Similar Session Finding** - Discover sessions with comparable issues
+- **Session Analysis**: Deep analysis of user sessions with AI-powered insights
+- **Live Monitoring**: Real-time monitoring of active user sessions
+- **User Behavior Analysis**: Comprehensive user journey and engagement metrics
+- **Pattern Detection**: Automatic detection of user behavior patterns
+- **Error Tracking**: Monitor and analyze session errors
+- **Event Timeline**: Detailed session event analysis and timeline
+- **Geographic Analytics**: User distribution and location insights
+- **Browser/Device Analytics**: Technical usage patterns
 
-## 🚀 Quick Start
+## 📋 Requirements
 
-1. **Clone and setup:**
-   ```bash
-   git clone https://github.com/rsp2k/openreplay-mcp-server.git
-   cd openreplay-mcp-server
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+- Python 3.8+
+- OpenReplay API access
+- Valid API key and project ID
 
-2. **Configure OpenReplay credentials:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your OpenReplay API credentials
-   ```
+## 🔧 Installation
 
-3. **Run the server:**
-   ```bash
-   python run_server.py
-   ```
+### Option 1: Direct Installation
+```bash
+pip install -r requirements.txt
+```
+
+### Option 2: Development Installation
+```bash
+git clone <repository-url>
+cd openreplay-mcp-server
+pip install -e .
+```
 
 ## ⚙️ Configuration
 
-Set these environment variables in your `.env` file:
-
-```env
-OPENREPLAY_API_URL=https://api.openreplay.com
-OPENREPLAY_API_KEY=your_api_key_here
-OPENREPLAY_PROJECT_ID=your_project_id_here
-```
-
-To get your OpenReplay API credentials:
-1. Go to your OpenReplay dashboard
-2. Navigate to Settings → API Keys
-3. Generate a new API key
-4. Copy your Project ID from the URL or project settings
-
-## 🛠️ Available Tools
-
-### Session Management
-- `search_sessions` - Search sessions with advanced filters
-- `get_session_details` - Get detailed session information
-- `get_user_session_history` - View all sessions for a specific user
-
-### Analysis Tools  
-- `analyze_user_journey` - Map user navigation patterns and page flows
-- `detect_problem_patterns` - Find rage clicks, form issues, and errors
-- `generate_session_summary` - AI-powered session insights and recommendations
-- `find_similar_sessions` - Discover related problematic sessions
-
-## 📋 Usage with Claude Desktop
-
-Add to your Claude Desktop MCP configuration (`claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "openreplay-analysis": {
-      "command": "python",
-      "args": ["/path/to/openreplay-mcp-server/run_server.py"],
-      "env": {
-        "OPENREPLAY_API_KEY": "your_api_key_here",
-        "OPENREPLAY_PROJECT_ID": "your_project_id_here"
-      }
-    }
-  }
-}
-```
-
-## 💬 Example Queries
-
-Once connected to Claude Desktop or another MCP client, you can ask:
-
-- *"Find sessions with errors from the last week"*
-- *"Analyze user journey for session ABC123"*
-- *"Generate a summary of problematic sessions today"*
-- *"Show me all sessions for user john@example.com"*
-- *"Find sessions similar to XYZ456 that had form abandonment"*
-- *"Debug session DEF789 and tell me what went wrong"*
-
-## 🐳 Docker Usage
-
-For containerized deployment:
+Set the following environment variables:
 
 ```bash
-# Set environment variables in .env file
-docker-compose up
+export OPENREPLAY_API_KEY="your_api_key_here"
+export OPENREPLAY_PROJECT_ID="your_project_id_here"
+export OPENREPLAY_API_URL="https://api.openreplay.com"  # Optional, defaults to public API
 ```
 
-Or build and run manually:
+### Getting Your Credentials
+
+1. **API Key**: Go to OpenReplay Dashboard → Preferences → Account → Organization API Key
+2. **Project ID**: Found in your project settings or URL
+
+## 🚀 Usage
+
+### Running the MCP Server
 
 ```bash
-docker build -t openreplay-mcp .
-docker run -e OPENREPLAY_API_KEY=your_key -e OPENREPLAY_PROJECT_ID=your_project openreplay-mcp
+python openreplay_mcp_working.py
 ```
 
-## 🔧 Development
+### Available MCP Tools
 
-The server is built with:
-- **FastMCP** - Official Python MCP SDK for server implementation
-- **httpx** - Async HTTP client for OpenReplay API
-- **asyncio** - Async/await support
+1. **`analyze_user_sessions(user_id, days_back=7)`**
+   - Comprehensive analysis of a user's session history
+   - Generates insights and behavior patterns
+   - Tracks engagement metrics and technical details
 
-### Project Structure
+2. **`get_session_details(session_id)`**
+   - Detailed analysis of a specific session
+   - Event timeline and user journey
+   - Error detection and interaction analysis
 
+3. **`monitor_live_sessions()`**
+   - Real-time monitoring of active sessions
+   - Browser and geographic distribution
+   - Activity status tracking
+
+4. **`get_project_overview()`**
+   - Project information and statistics
+   - Organization overview
+   - API status and configuration
+
+## 📊 Example Output
+
+### User Analysis
 ```
-openreplay-mcp-server/
-├── openreplay_session_analyzer.py  # OpenReplay client and analysis logic
-├── run_server.py                   # FastMCP server with tools
-├── mcp.py                          # Django MCP configuration (optional)
-├── settings.py                     # Django settings (optional)
-├── requirements.txt                # Python dependencies
-├── .env.example                    # Environment variables template
-├── Dockerfile                      # Container configuration
-├── docker-compose.yml              # Docker Compose setup
-└── README.md                       # This file
-```
+👤 User Analysis: user123
+================================================================================
 
-### Adding New Analysis Features
+📊 User Overview:
+• Total Sessions: 15
+• Sessions Analyzed: 8
+• User Lifetime: 23 days
 
-1. Add new methods to the `SessionAnalyzer` class in `openreplay_session_analyzer.py`
-2. Create corresponding `@mcp.tool()` decorated functions in `run_server.py`
-3. Test with your OpenReplay data
+📈 Engagement Analysis:
+• Avg Session Duration: 8.3 minutes
+• Avg Pages per Session: 5.2
+• Error Rate: 2.1%
 
-## 📊 Session Analysis Capabilities
+💡 AI Insights:
+⏰ Long engagement sessions (8.3 min avg) - good retention
+📱 Mobile-first usage (67% mobile)
+✅ Low error rate (2.1%) - stable experience
 
-### Problem Detection
-- **Rage Clicks**: Multiple rapid clicks indicating frustration
-- **Form Abandonment**: Users starting but not completing forms
-- **Dead Clicks**: Clicks on non-interactive elements
-- **Error Tracking**: JavaScript errors and exceptions
-
-### Journey Analysis
-- **Page Flow Mapping**: Track user navigation through your site
-- **Duration Analysis**: Understand time spent on each page
-- **Bounce Rate**: Identify single-page sessions
-- **Action Breakdown**: Analyze user interactions (clicks, scrolls, inputs)
-
-### AI Insights
-- **Automated Summaries**: Natural language session descriptions
-- **Problem Identification**: Highlight potential UX issues
-- **Performance Analysis**: Identify slow-loading content
-- **Behavioral Patterns**: Recognize user intent and goals
-
-## 🔗 Integration Examples
-
-### Debugging Workflow
-```python
-# Search for recent error sessions
-sessions = await search_sessions(has_errors=True, start_date="2024-06-01")
-
-# Analyze specific problematic session
-summary = await generate_session_summary(session_id="abc123")
-problems = await detect_problem_patterns(session_id="abc123")
-
-# Find similar issues
-similar = await find_similar_sessions(reference_session_id="abc123", criteria="errors")
+📋 Recent Sessions:
+1. Session 1234567890
+   Duration: 12.5 min | Pages: 8 | Errors: 0
+   Browser: Chrome on iOS
 ```
 
-### UX Research Workflow
-```python
-# Analyze user behavior over time
-user_history = await get_user_session_history(user_id="user123")
+### Live Session Monitoring
+```
+🔴 Live Session Monitor
+================================================================================
+Active Sessions: 12
 
-# Study navigation patterns
-for session in user_sessions:
-    journey = await analyze_user_journey(session_id=session.id)
-    # Analyze patterns...
+📊 Session Status:
+• Active Tabs: 8
+• Background Tabs: 4
+
+🖥️ Browser Distribution:
+• Chrome: 7 sessions
+• Safari: 3 sessions
+• Firefox: 2 sessions
+
+👥 Active Users:
+1. User: alice@example.com
+   Browser: Chrome on macOS
+   Duration: 5.2 min
+   Status: 🟢 Active
 ```
 
-## 📝 API Requirements
+## 🔧 API Endpoints Used
 
-This server requires:
-- OpenReplay account with API access
-- Valid API key and project ID
-- Network access to OpenReplay API endpoints
-- Python 3.8+ environment
+The server uses the following OpenReplay API endpoints:
 
-## 🤝 Contributing
+- `GET /api/v1/{project}/users/{user_id}/sessions` - User sessions
+- `GET /api/v1/{project}/users/{user_id}` - User statistics  
+- `GET /api/v1/{project}/sessions/{session_id}/events` - Session events
+- `POST /api/v1/{project}/assist/sessions` - Live sessions
+- `GET /api/v1/projects` - Project list
+- `GET /api/v1/projects/{project_id}` - Project details
 
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+## 🐛 Troubleshooting
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+### Common Issues
 
-## 📄 License
+1. **404 Errors**: Some endpoints are only available in self-hosted OpenReplay instances
+2. **Authentication**: Ensure your API key has proper permissions
+3. **Rate Limiting**: The API may have rate limits - implement retry logic if needed
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### Debug Mode
 
-## 🙏 Acknowledgments
+Set environment variable for detailed logging:
+```bash
+export OPENREPLAY_DEBUG=true
+```
 
-- [OpenReplay](https://openreplay.com/) for providing the session replay platform
-- [Model Context Protocol](https://github.com/modelcontextprotocol/python-sdk) for the integration framework
-- [FastMCP](https://github.com/modelcontextprotocol/python-sdk) for the Python MCP SDK
+## 📝 License
 
-## 📞 Support
+MIT License - see LICENSE file for details.
 
-If you encounter any issues or have questions:
+## 🆘 Support
 
-1. Check the [Issues](https://github.com/rsp2k/openreplay-mcp-server/issues) page
-2. Create a new issue with detailed information
-3. Join the discussion in existing issues
+- Check the [OpenReplay Documentation](https://docs.openreplay.com)
+- File issues on GitHub
+- Join the OpenReplay community
 
----
+## ⚡ Performance Notes
 
-**Built with ❤️ for better user experience analysis**
+- The server caches frequently accessed data
+- Use appropriate `days_back` limits for large datasets
+- Live session monitoring has minimal performance impact
+- Session analysis scales with the number of events per session
+
+## 🔐 Security
+
+- Never commit API keys to version control
+- Use environment variables for all sensitive configuration
+- The server only reads data - no write operations to OpenReplay
+- All API communication is over HTTPS
