@@ -9,11 +9,8 @@ from pathlib import Path
 # Add current directory to Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
-# Set environment variables if not set
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
-
-# Import required modules after setting up path
-from mcp.server.fastmcp import FastMCP
+# Import required modules
+from fastmcp import FastMCP
 from openreplay_session_analyzer import OpenReplayConfig, OpenReplayClient, SessionAnalyzer
 
 # Create FastMCP server
@@ -273,7 +270,7 @@ async def get_user_session_history(user_id: str, limit: int = 20) -> str:
     except Exception as e:
         return f"Error getting user session history: {str(e)}"
 
-async def main():
+def main():
     """Main entry point for the MCP server"""
     print("🔥 OpenReplay Session Analysis MCP Server")
     print("=" * 50)
@@ -295,13 +292,16 @@ async def main():
     print("   Server will run on stdio transport")
     print("\n" + "=" * 50)
     
-    await mcp.run()
+    # Run the server synchronously
+    mcp.run()
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        main()
     except KeyboardInterrupt:
         print("\n👋 Server stopped by user")
     except Exception as e:
         print(f"❌ Server error: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)

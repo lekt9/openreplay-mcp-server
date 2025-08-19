@@ -1,3 +1,4 @@
 django>=4.2.0
 mcp>=1.2.0
 httpx>=0.24.0
+fastmcp

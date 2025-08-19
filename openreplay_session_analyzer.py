@@ -1,6 +1,6 @@
 """
 OpenReplay Session Analysis MCP Server
-Django-based MCP server for analyzing OpenReplay session data using MCPToolset
+FastMCP-based server for analyzing OpenReplay session data
 """
 
 import os
@@ -10,30 +10,6 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
 import httpx
-from django.conf import settings
-
-# Configure Django settings if not already configured
-if not settings.configured:
-    settings.configure(
-        DEBUG=True,
-        SECRET_KEY='openreplay-mcp-server-key',
-        INSTALLED_APPS=[
-            'django_mcp',
-        ],
-        USE_TZ=True,
-        ROOT_URLCONF='openreplay_mcp.urls',
-        DATABASES={
-            'default': {
-                'ENGINE': 'django.db.backends.sqlite3',
-                'NAME': ':memory:',
-            }
-        }
-    )
-
-import django
-django.setup()
-
-from django_mcp import MCPToolset
 
 
 @dataclass
@@ -49,13 +25,20 @@ class OpenReplayClient:
     
     def __init__(self, config: OpenReplayConfig):
         self.config = config
-        self.client = httpx.AsyncClient(
-            headers={
-                'Authorization': f'Bearer {config.api_key}',
-                'Content-Type': 'application/json'
-            },
-            timeout=30.0
-        )
+        self._client = None
+    
+    @property
+    def client(self):
+        """Lazy initialization of httpx AsyncClient"""
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                headers={
+                    'Authorization': f'Bearer {self.config.api_key}',
+                    'Content-Type': 'application/json'
+                },
+                timeout=30.0
+            )
+        return self._client
     
     async def search_sessions(
         self,
@@ -115,6 +98,12 @@ class OpenReplayClient:
             limit=limit,
             user_id=user_id
         )
+    
+    async def close(self):
+        """Close the httpx client"""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
 
 
 class SessionAnalyzer:
@@ -234,11 +223,10 @@ class SessionAnalyzer:
         return "\n".join(insights) if insights else "✅ Session appears normal with no major issues detected"
 
 
-class OpenReplaySessionAnalysisTools(MCPToolset):
-    """OpenReplay Session Analysis MCP Tools using MCPToolset"""
+class OpenReplaySessionAnalysisTools:
+    """OpenReplay Session Analysis MCP Tools"""
     
     def __init__(self):
-        super().__init__()
         self.config = OpenReplayConfig()
         self.client = OpenReplayClient(self.config)
         self.analyzer = SessionAnalyzer()
