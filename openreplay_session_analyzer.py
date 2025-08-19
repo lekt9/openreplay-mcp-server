@@ -76,16 +76,46 @@ class OpenReplayClient:
         response.raise_for_status()
         return response.json()
     
-    async def get_session_details(self, session_id: str, user_id: str) -> Dict:
+    async def get_session_details(self, session_id: str, user_id: str = None) -> Dict:
         """Get detailed information about a specific session
         Note: OpenReplay API doesn't have a direct session details endpoint,
         so we get it from user sessions"""
-        sessions_response = await self.get_user_sessions(user_id)
-        sessions = sessions_response.get('data', [])
-        for session in sessions:
-            if str(session.get('sessionId')) == str(session_id):
-                return session
-        return {'error': f'Session {session_id} not found for user {user_id}'}
+        if user_id:
+            sessions_response = await self.get_user_sessions(user_id)
+            sessions = sessions_response.get('data', [])
+            for session in sessions:
+                if str(session.get('sessionId')) == str(session_id):
+                    return session
+            return {'error': f'Session {session_id} not found for user {user_id}'}
+        else:
+            # If no user_id provided, try to get session details from events endpoint
+            # This is a fallback that provides basic session info
+            try:
+                events_response = await self.get_session_events(session_id)
+                events = events_response.get('data', [])
+                
+                # Create a basic session object from events data
+                if events:
+                    # Calculate session duration from first to last event
+                    timestamps = [e.get('timestamp', 0) for e in events if e.get('timestamp')]
+                    if timestamps:
+                        duration = max(timestamps) - min(timestamps)
+                    else:
+                        duration = 0
+                        
+                    return {
+                        'sessionId': session_id,
+                        'events': events,
+                        'events_count': len(events),
+                        'duration': duration,
+                        'user_id': 'Anonymous',
+                        'pages_count': len([e for e in events if e.get('type') == 'LOCATION']),
+                        'errors_count': len([e for e in events if e.get('type') == 'error'])
+                    }
+                else:
+                    return {'error': f'No events found for session {session_id}'}
+            except Exception as e:
+                return {'error': f'Session {session_id} not found: {str(e)}'}
     
     async def get_session_events(self, session_id: str) -> Dict:
         """Get events for a specific session"""
@@ -368,18 +398,19 @@ class OpenReplaySessionAnalysisTools:
         except Exception as e:
             return f"Error getting session details: {str(e)}"
     
-    async def analyze_user_journey(self, session_id: str) -> str:
+    async def analyze_user_journey(self, session_id: str, user_id: str = None) -> str:
         """
         Analyze user journey and navigation patterns for a session.
         
         Args:
             session_id: The ID of the session to analyze
+            user_id: The user ID (optional, will be inferred if not provided)
         
         Returns:
             Formatted string with user journey analysis
         """
         try:
-            session_data = await self.client.get_session_details(session_id)
+            session_data = await self.client.get_session_details(session_id, user_id)
             events_data = await self.client.get_session_events(session_id)
             
             # Combine session and events data
@@ -403,18 +434,19 @@ class OpenReplaySessionAnalysisTools:
         except Exception as e:
             return f"Error analyzing user journey: {str(e)}"
     
-    async def detect_problem_patterns(self, session_id: str) -> str:
+    async def detect_problem_patterns(self, session_id: str, user_id: str = None) -> str:
         """
         Detect rage clicks, dead clicks, form abandonment and other issues.
         
         Args:
             session_id: The ID of the session to analyze
+            user_id: The user ID (optional, will be inferred if not provided)
         
         Returns:
             Formatted string with problem pattern analysis
         """
         try:
-            session_data = await self.client.get_session_details(session_id)
+            session_data = await self.client.get_session_details(session_id, user_id)
             events_data = await self.client.get_session_events(session_id)
             
             full_session_data = {**session_data, 'events': events_data.get('events', [])}
@@ -445,18 +477,19 @@ class OpenReplaySessionAnalysisTools:
         except Exception as e:
             return f"Error detecting problem patterns: {str(e)}"
     
-    async def generate_session_summary(self, session_id: str) -> str:
+    async def generate_session_summary(self, session_id: str, user_id: str = None) -> str:
         """
         Generate AI-powered summary and insights for a session.
         
         Args:
             session_id: The ID of the session to summarize
+            user_id: The user ID (optional, will be inferred if not provided)
         
         Returns:
             Formatted string with session summary and insights
         """
         try:
-            session_data = await self.client.get_session_details(session_id)
+            session_data = await self.client.get_session_details(session_id, user_id)
             events_data = await self.client.get_session_events(session_id)
             
             full_session_data = {**session_data, 'events': events_data.get('events', [])}
