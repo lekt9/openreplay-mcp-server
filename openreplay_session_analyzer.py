@@ -15,9 +15,9 @@ import httpx
 @dataclass
 class OpenReplayConfig:
     """OpenReplay API configuration"""
-    api_url: str = os.getenv('OPENREPLAY_API_URL', 'https://api.openreplay.com')
-    api_key: str = os.getenv('OPENREPLAY_API_KEY', '')
-    project_id: str = os.getenv('OPENREPLAY_PROJECT_ID', '')
+    api_url: str = os.getenv('OPENREPLAY_API_URL', 'https://app.openreplay.com')  # Your OpenReplay instance URL
+    api_key: str = os.getenv('OPENREPLAY_API_KEY', '')  # Organization API key
+    project_key: str = os.getenv('OPENREPLAY_PROJECT_KEY', '')  # Project key (e.g., 3sWXSsqHgSKnE87YkNJK)
 
 
 class OpenReplayClient:
@@ -33,71 +33,68 @@ class OpenReplayClient:
         if self._client is None:
             self._client = httpx.AsyncClient(
                 headers={
-                    'Authorization': f'Bearer {self.config.api_key}',
+                    'Authorization': self.config.api_key,  # Organization API key
                     'Content-Type': 'application/json'
                 },
                 timeout=30.0
             )
         return self._client
     
-    async def search_sessions(
+    async def get_user_sessions(
         self,
-        limit: int = 50,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        user_id: Optional[str] = None,
-        has_errors: Optional[bool] = None,
-        min_duration: Optional[int] = None,
-        filters: Optional[Dict] = None
+        user_id: str,
+        start_date: Optional[int] = None,
+        end_date: Optional[int] = None
     ) -> Dict:
-        """Search for sessions with various filters"""
-        params = {
-            'limit': limit,
-            'projectId': self.config.project_id
-        }
-        
+        """Get sessions for a specific user using the official API"""
+        params = {}
         if start_date:
-            params['startDate'] = start_date
+            params['start_date'] = start_date
         if end_date:
-            params['endDate'] = end_date
-        if user_id:
-            params['userId'] = user_id
-        if has_errors is not None:
-            params['hasErrors'] = has_errors
-        if min_duration:
-            params['minDuration'] = min_duration
-        if filters:
-            params.update(filters)
+            params['end_date'] = end_date
         
         response = await self.client.get(
-            f"{self.config.api_url}/v1/sessions",
+            f"{self.config.api_url}/api/v1/{self.config.project_key}/users/{user_id}/sessions",
             params=params
         )
         response.raise_for_status()
         return response.json()
     
-    async def get_session_details(self, session_id: str) -> Dict:
-        """Get detailed information about a specific session"""
+    async def get_all_projects(self) -> Dict:
+        """Get list of all projects"""
         response = await self.client.get(
-            f"{self.config.api_url}/v1/sessions/{session_id}"
+            f"{self.config.api_url}/api/v1/projects"
         )
         response.raise_for_status()
         return response.json()
+    
+    async def get_user_stats(self, user_id: str) -> Dict:
+        """Get stats for a specific user"""
+        response = await self.client.get(
+            f"{self.config.api_url}/api/v1/{self.config.project_key}/users/{user_id}"
+        )
+        response.raise_for_status()
+        return response.json()
+    
+    async def get_session_details(self, session_id: str, user_id: str) -> Dict:
+        """Get detailed information about a specific session
+        Note: OpenReplay API doesn't have a direct session details endpoint,
+        so we get it from user sessions"""
+        sessions_response = await self.get_user_sessions(user_id)
+        sessions = sessions_response.get('data', [])
+        for session in sessions:
+            if str(session.get('sessionId')) == str(session_id):
+                return session
+        return {'error': f'Session {session_id} not found for user {user_id}'}
     
     async def get_session_events(self, session_id: str) -> Dict:
         """Get events for a specific session"""
         response = await self.client.get(
-            f"{self.config.api_url}/v1/sessions/{session_id}/events"
+            f"{self.config.api_url}/api/v1/{self.config.project_key}/sessions/{session_id}/events"
         )
         response.raise_for_status()
         return response.json()
     
-    async def get_user_sessions(self, user_id: str, limit: int = 20) -> Dict:
-        """Get all sessions for a specific user"""
-        return await self.search_sessions(
-            limit=limit,
-            user_id=user_id
-        )
     
     async def close(self):
         """Close the httpx client"""
@@ -231,67 +228,127 @@ class OpenReplaySessionAnalysisTools:
         self.client = OpenReplayClient(self.config)
         self.analyzer = SessionAnalyzer()
     
-    async def search_sessions(
-        self,
-        limit: int = 50,
-        start_date: str = None,
-        end_date: str = None,
-        user_id: str = None,
-        has_errors: bool = None,
-        min_duration: int = None
-    ) -> str:
+    async def list_projects(self) -> str:
         """
-        Search for OpenReplay sessions with various filters.
+        List all available projects in your OpenReplay account.
+        
+        Returns:
+            List of projects with their keys and names
+        """
+        try:
+            result = await self.client.get_all_projects()
+            projects = result.get('data', [])
+            
+            if not projects:
+                return "No projects found. Make sure your API key has the correct permissions."
+            
+            summary = f"Found {len(projects)} project(s):\n\n"
+            for project in projects:
+                summary += f"• Project: {project.get('name', 'Unknown')}\n"
+                summary += f"  Key: {project.get('projectKey', 'N/A')}\n\n"
+            
+            return summary
+        except Exception as e:
+            return f"Error listing projects: {str(e)}"
+    
+    async def get_user_info(self, user_id: str) -> str:
+        """
+        Get statistics and information about a specific user.
         
         Args:
-            limit: Number of sessions to return (default: 50)
-            start_date: Start date in YYYY-MM-DD format
-            end_date: End date in YYYY-MM-DD format
-            user_id: Filter by specific user ID
-            has_errors: Filter sessions with/without errors
-            min_duration: Minimum session duration in seconds
+            user_id: The user ID to get information for
+        
+        Returns:
+            User statistics including session count and activity dates
+        """
+        try:
+            result = await self.client.get_user_stats(user_id)
+            data = result.get('data', {})
+            
+            info = f"User Information for {user_id}:\n\n"
+            info += f"• Session Count: {data.get('sessionCount', 0)}\n"
+            
+            first_seen = data.get('firstSeen')
+            if first_seen:
+                from datetime import datetime
+                dt = datetime.fromtimestamp(first_seen / 1000)
+                info += f"• First Seen: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            
+            last_seen = data.get('lastSeen')
+            if last_seen:
+                from datetime import datetime
+                dt = datetime.fromtimestamp(last_seen / 1000)
+                info += f"• Last Seen: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            
+            return info
+        except Exception as e:
+            return f"Error getting user info: {str(e)}"
+    
+    async def search_sessions(
+        self,
+        user_id: str
+    ) -> str:
+        """
+        Get OpenReplay sessions for a specific user.
+        
+        Args:
+            user_id: User ID to get sessions for (REQUIRED)
         
         Returns:
             Formatted string with session search results
         """
         try:
-            result = await self.client.search_sessions(
-                limit=limit,
-                start_date=start_date,
-                end_date=end_date,
-                user_id=user_id,
-                has_errors=has_errors,
-                min_duration=min_duration
-            )
+            if not user_id:
+                return "Error: user_id is required. Use tracker.setUserID() value from your application."
             
-            sessions = result.get('sessions', [])
-            summary = f"Found {len(sessions)} sessions matching criteria:\n\n"
+            result = await self.client.get_user_sessions(user_id)
+            
+            # Handle the response format from the official API
+            sessions = result.get('data', [])
+            total = len(sessions)
+            
+            summary = f"Found {total} sessions for user {user_id}:\n\n"
             
             for session in sessions[:10]:  # Show first 10
-                summary += f"• Session {session.get('id')}: {session.get('duration', 0)/1000:.1f}s"
-                if session.get('user_id'):
-                    summary += f" (User: {session.get('user_id')})"
-                if session.get('errors_count', 0) > 0:
-                    summary += f" ⚠️ {session.get('errors_count')} errors"
-                summary += f" - {session.get('created_at', 'Unknown date')}\n"
+                session_id = session.get('sessionId', session.get('id', 'Unknown'))
+                duration = session.get('duration', 0)
+                # Convert to seconds if duration is in milliseconds
+                duration_sec = duration / 1000 if duration > 0 else 0
+                
+                summary += f"• Session {session_id}: {duration_sec:.1f}s"
+                
+                # Add timestamp info
+                start_ts = session.get('startTs', session.get('start_ts', session.get('timestamp')))
+                if start_ts:
+                    summary += f" - {start_ts}"
+                    
+                # Add user agent info if available
+                user_agent = session.get('userAgent', '')
+                if user_agent:
+                    # Shorten user agent for display
+                    ua_short = user_agent[:30] + '...' if len(user_agent) > 30 else user_agent
+                    summary += f" ({ua_short})"
+                    
+                summary += "\n"
             
             return summary
             
         except Exception as e:
             return f"Error searching sessions: {str(e)}"
     
-    async def get_session_details(self, session_id: str) -> str:
+    async def get_session_details(self, session_id: str, user_id: str) -> str:
         """
         Get detailed information about a specific session.
         
         Args:
             session_id: The ID of the session to analyze
+            user_id: The user ID associated with the session
         
         Returns:
             Formatted string with detailed session information
         """
         try:
-            session_data = await self.client.get_session_details(session_id)
+            session_data = await self.client.get_session_details(session_id, user_id)
             
             details = f"Session Details for {session_id}:\n"
             details += f"Duration: {session_data.get('duration', 0)/1000:.1f} seconds\n"

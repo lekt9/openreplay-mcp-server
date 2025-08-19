@@ -22,45 +22,128 @@ client = OpenReplayClient(config)
 analyzer = SessionAnalyzer()
 
 @mcp.tool()
-async def search_sessions(
-    limit: int = 50,
-    start_date: str = None,
-    end_date: str = None,
-    user_id: str = None,
-    has_errors: bool = None,
-    min_duration: int = None
-) -> str:
+async def list_projects() -> str:
     """
-    Search for OpenReplay sessions with various filters.
-    
-    Args:
-        limit: Number of sessions to return (default: 50)
-        start_date: Start date in YYYY-MM-DD format
-        end_date: End date in YYYY-MM-DD format
-        user_id: Filter by specific user ID
-        has_errors: Filter sessions with/without errors
-        min_duration: Minimum session duration in seconds
+    List all available projects in your OpenReplay account
     """
     try:
-        result = await client.search_sessions(
-            limit=limit,
-            start_date=start_date,
-            end_date=end_date,
-            user_id=user_id,
-            has_errors=has_errors,
-            min_duration=min_duration
-        )
+        result = await client.get_all_projects()
+        projects = result.get('data', [])
         
-        sessions = result.get('sessions', [])
-        summary = f"Found {len(sessions)} sessions matching criteria:\n\n"
+        if not projects:
+            return "No projects found. Make sure your API key has the correct permissions."
+        
+        summary = f"Found {len(projects)} project(s):\n\n"
+        for project in projects:
+            summary += f"• Project: {project.get('name', 'Unknown')}\n"
+            summary += f"  Key: {project.get('projectKey', 'N/A')}\n\n"
+        
+        return summary
+    except Exception as e:
+        return f"Error listing projects: {str(e)}"
+
+@mcp.tool()
+async def get_user_info(user_id: str) -> str:
+    """
+    Get statistics and information about a specific user
+    
+    Args:
+        user_id: The user ID to get information for
+    """
+    try:
+        result = await client.get_user_stats(user_id)
+        data = result.get('data', {})
+        
+        info = f"User Information for {user_id}:\n\n"
+        info += f"• Session Count: {data.get('sessionCount', 0)}\n"
+        
+        first_seen = data.get('firstSeen')
+        if first_seen:
+            from datetime import datetime
+            dt = datetime.fromtimestamp(first_seen / 1000)
+            info += f"• First Seen: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        
+        last_seen = data.get('lastSeen')
+        if last_seen:
+            from datetime import datetime
+            dt = datetime.fromtimestamp(last_seen / 1000)
+            info += f"• Last Seen: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        
+        return info
+    except Exception as e:
+        return f"Error getting user info: {str(e)}"
+
+@mcp.tool()
+async def get_api_help() -> str:
+    """
+    Get help and instructions for using the OpenReplay API
+    """
+    return """
+OpenReplay API Usage Guide:
+
+The OpenReplay API requires a user ID to fetch sessions. Here's how to use it:
+
+1. **Required Configuration** (.env file):
+   - OPENREPLAY_API_URL: Your OpenReplay instance URL (e.g., https://app.openreplay.com)
+   - OPENREPLAY_API_KEY: Your Organization API key (from Preferences > Account)
+   - OPENREPLAY_PROJECT_KEY: Your project key (from Preferences > Projects)
+
+2. **Finding User IDs**:
+   - Check your OpenReplay dashboard for user IDs
+   - Look for tracker.setUserID() calls in your application
+   - Common formats: email addresses, application user IDs, or anonymous IDs
+
+3. **Available Tools**:
+   - search_sessions(user_id="..."): Get sessions for a specific user
+   - get_session_details(session_id="...", user_id="..."): Get session details
+   - get_session_events(session_id="..."): Get events from a session
+   - analyze_user_journey(session_id="..."): Analyze user navigation
+   - detect_problem_patterns(session_id="..."): Find UX issues
+
+Example usage:
+1. search_sessions(user_id="user@example.com")
+2. Use a session ID from the results
+3. get_session_details(session_id="123456", user_id="user@example.com")
+"""
+
+@mcp.tool()
+async def search_sessions(
+    user_id: str = None,
+    limit: int = 10,
+    page: int = 1
+) -> str:
+    """
+    Search for OpenReplay sessions.
+    
+    Args:
+        user_id: Optional user ID to filter sessions
+        limit: Number of sessions to return (default: 10)
+        page: Page number for pagination (default: 1)
+    """
+    try:
+        if not user_id:
+            return "Error: user_id is required. Use the value from tracker.setUserID() in your application."
+            
+        result = await client.get_user_sessions(user_id)
+        
+        # Handle the official API response format
+        sessions = result.get('data', [])
+            
+        summary = f"Found {len(sessions)} sessions for user {user_id}:\n\n"
         
         for session in sessions[:10]:  # Show first 10
-            summary += f"• Session {session.get('id')}: {session.get('duration', 0)/1000:.1f}s"
-            if session.get('user_id'):
-                summary += f" (User: {session.get('user_id')})"
-            if session.get('errors_count', 0) > 0:
-                summary += f" ⚠️ {session.get('errors_count')} errors"
-            summary += f" - {session.get('created_at', 'Unknown date')}\n"
+            session_id = session.get('sessionId', session.get('id', 'Unknown'))
+            duration = session.get('duration', 0)
+            duration_sec = duration / 1000 if duration > 0 else 0
+            
+            summary += f"• Session {session_id}: {duration_sec:.1f}s"
+            
+            # Add timestamp info
+            start_ts = session.get('startTs', session.get('start_ts'))
+            if start_ts:
+                summary += f" - {start_ts}"
+                
+            summary += "\n"
         
         return summary
         
@@ -68,15 +151,16 @@ async def search_sessions(
         return f"Error searching sessions: {str(e)}"
 
 @mcp.tool()
-async def get_session_details(session_id: str) -> str:
+async def get_session_details(session_id: str, user_id: str) -> str:
     """
     Get detailed information about a specific session.
     
     Args:
         session_id: The ID of the session to analyze
+        user_id: The user ID associated with the session
     """
     try:
-        session_data = await client.get_session_details(session_id)
+        session_data = await client.get_session_details(session_id, user_id)
         
         details = f"Session Details for {session_id}:\n"
         details += f"Duration: {session_data.get('duration', 0)/1000:.1f} seconds\n"
@@ -275,17 +359,17 @@ def main():
     print("🔥 OpenReplay Session Analysis MCP Server")
     print("=" * 50)
     print(f"API URL: {config.api_url}")
-    print(f"Project ID: {config.project_id}")
+    print(f"Project Key: {config.project_key}")
     print(f"API Key configured: {'Yes' if config.api_key else 'No'}")
     print("=" * 50)
     
     if not config.api_key:
         print("⚠️  Warning: OPENREPLAY_API_KEY not set!")
-        print("   Set your API key in environment variables or .env file")
+        print("   Set your Organization API key in environment variables or .env file")
     
-    if not config.project_id:
-        print("⚠️  Warning: OPENREPLAY_PROJECT_ID not set!")
-        print("   Set your project ID in environment variables or .env file")
+    if not config.project_key:
+        print("⚠️  Warning: OPENREPLAY_PROJECT_KEY not set!")
+        print("   Set your project key in environment variables or .env file")
     
     print("\n🚀 Starting MCP server...")
     print("   Use with MCP-compatible clients like Claude Desktop")
