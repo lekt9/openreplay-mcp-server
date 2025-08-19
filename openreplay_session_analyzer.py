@@ -15,9 +15,9 @@ import httpx
 @dataclass
 class OpenReplayConfig:
     """OpenReplay API configuration"""
-    api_url: str = os.getenv('OPENREPLAY_API_URL', 'https://app.openreplay.com')  # Your OpenReplay instance URL
+    api_url: str = os.getenv('OPENREPLAY_API_URL', 'https://api.openreplay.com')  # OpenReplay API URL
     api_key: str = os.getenv('OPENREPLAY_API_KEY', '')  # Organization API key
-    project_key: str = os.getenv('OPENREPLAY_PROJECT_KEY', '')  # Project key (e.g., 3sWXSsqHgSKnE87YkNJK)
+    project_key: str = os.getenv('OPENREPLAY_PROJECT_KEY', os.getenv('OPENREPLAY_PROJECT_ID', ''))  # Project key/ID
 
 
 class OpenReplayClient:
@@ -536,19 +536,30 @@ class OpenReplaySessionAnalysisTools:
             Formatted string with user session history
         """
         try:
-            user_sessions = await self.client.get_user_sessions(user_id, limit)
-            sessions = user_sessions.get('sessions', [])
+            user_sessions = await self.client.get_user_sessions(user_id)
+            sessions = user_sessions.get('data', [])  # Changed from 'sessions' to 'data'
             
             history = f"Session History for User {user_id}:\n\n"
             history += f"Total sessions found: {len(sessions)}\n\n"
             
-            for i, session in enumerate(sessions, 1):
-                history += f"{i}. Session {session.get('id')}\n"
+            # Limit the sessions shown
+            for i, session in enumerate(sessions[:limit], 1):
+                session_id = session.get('sessionId', session.get('id', 'Unknown'))
+                history += f"{i}. Session {session_id}\n"
                 history += f"   Duration: {session.get('duration', 0)/1000:.1f}s\n"
-                history += f"   Pages: {session.get('pages_count', 0)}\n"
-                history += f"   Date: {session.get('created_at', 'Unknown')}\n"
-                if session.get('errors_count', 0) > 0:
-                    history += f"   ⚠️ Errors: {session['errors_count']}\n"
+                history += f"   Pages: {session.get('pagesCount', 0)}\n"
+                history += f"   Events: {session.get('eventsCount', 0)}\n"
+                history += f"   Errors: {session.get('errorsCount', 0)}\n"
+                
+                # Format timestamp
+                start_ts = session.get('startTs')
+                if start_ts:
+                    from datetime import datetime
+                    dt = datetime.fromtimestamp(start_ts / 1000)
+                    history += f"   Date: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                
+                if session.get('errorsCount', 0) > 0:
+                    history += f"   ⚠️ Session had errors\n"
                 history += "\n"
             
             return history
